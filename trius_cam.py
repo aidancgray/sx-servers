@@ -1,3 +1,12 @@
+#!/usr/bin/python3.8
+# trius_cam.py
+# 5/13/2020
+# Aidan Gray
+# aidan.gray@idg.jhu.edu
+# 
+# This is an Indi Client for testing the Trius Cam on Indi Server.
+
+import socketserver
 import PyIndi
 import time
 import sys
@@ -46,7 +55,7 @@ def connect_to_indi():
 
     return indiclient
 
-def connect_to_ccd(indiclient):
+def connect_to_ccd():
     ccd="SX CCD SXVR-H694"
     device_ccd=indiclient.getDevice(ccd)
     while not(device_ccd):
@@ -81,7 +90,7 @@ def connect_to_ccd(indiclient):
         
     return ccd_exposure, ccd_ccd1
 
-def exposure(indiclient, ccd_exposure, ccd_ccd1, expTime):
+def exposure(expTime):
     blobEvent.clear()    
     
     # set the value for the next exposure
@@ -100,26 +109,50 @@ def exposure(indiclient, ccd_exposure, ccd_ccd1, expTime):
         print("fits data type: ", type(image_data))
 
         # write the byte array out to a FITS file
-        f = open('/home/vncuser/Pictures/SX CCD/SC-CCD-Test-'+name+'.fits', 'wb')
+        f = open('/home/vncuser/Pictures/SX CCD/SXVR-H694-'+name+'.fits', 'wb')
         f.write(image_data)
         f.close()
 
+class MyTCPHandler(socketserver.StreamRequestHandler,):
 
-if __name__ == "__main__":
-    
-    indiclient = connect_to_indi()
-    ccd_exposure, ccd_ccd1 = connect_to_ccd(indiclient)
-    
-    flag = True
-    while flag:
-        expTime = input('$ ')
+    def handle(self):
+        # self.rfile is a file-like object created by the handler;
+        # we can now use e.g. readline() instead of raw recv() calls
+        self.data = self.rfile.readline().strip()
+        print("{} wrote:".format(self.client_address[0]))
+        print(self.data)
+        
+        # Likewise, self.wfile is a file-like object used to write back
+        # to the client
+        self.wfile.write(self.data.upper())
+        
         
         try:
-            float(expTime)
+            float(self.data)
             if float(expTime) >= 0:
                 expTime = float(expTime)
                 blobEvent=threading.Event()
-                exposure(indiclient, ccd_exposure, ccd_ccd1, expTime)
+                exposure(expTime)
             
         except ValueError:
             print('ERROR: Not a valid exposure time')        
+
+
+if __name__ == "__main__":
+
+    # connect to the local indiserver
+    indiclient = connect_to_indi()
+    ccd_exposure, ccd_ccd1 = connect_to_ccd()
+    
+
+    # setup Remote TCP Server
+    HOST, PORT = "192.168.1.85", 9999
+
+    print("Opening connection @"+HOST+":"+str(PORT))
+    
+    # Create the server
+    server = socketserver.TCPServer((HOST, PORT), MyTCPHandler)
+    
+    # Activate the server; this will keep running until you
+    # interrupt the program with Ctrl-C
+    server.serve_forever()
