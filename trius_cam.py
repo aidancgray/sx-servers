@@ -84,47 +84,42 @@ def connect_to_ccd(indiclient):
     # we should inform the indi server that we want to receive the
     # "CCD1" blob from this device
     indiclient.setBLOBMode(PyIndi.B_ALSO, ccd, "CCD1")
- 
+    print("setting blob mode")
     ccd_ccd1=device_ccd.getBLOB("CCD1")
     while not(ccd_ccd1):
         time.sleep(0.5)
         ccd_ccd1=device_ccd.getBLOB("CCD1")
-
+    print("got blob")
     return ccd_exposure, ccd_ccd1
 
-def exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures):
-    i=0
-    ccd_exposure[0].value=exposures[i]
+def exposure(indiclient, ccd_exposure, ccd_ccd1, expTime):
+    blobEvent.clear()    
+    
+    # set the value for the next exposure
+    ccd_exposure[0].value=expTime
     indiclient.sendNewNumber(ccd_exposure)
-    while (i < len(exposures)):
-        name = str(exposures[i])
-        # wait for the ith exposure
-        blobEvent.wait()
-        # we can start immediately the next one
-        if (i + 1 < len(exposures)):
-            ccd_exposure[0].value=exposures[i+1]
-            blobEvent.clear()
-            indiclient.sendNewNumber(ccd_exposure)
-        # and meanwhile process the received one
-        for blob in ccd_ccd1:
-            print("name: ", blob.name," size: ", blob.size," format: ", blob.format)
-            # pyindi-client adds a getblobdata() method to IBLOB item
-            # for accessing the contents of the blob, which is a bytearray in Python
-            image_data=blob.getblobdata()
-            print("fits data type: ", type(image_data))
-            f = open('/home/vncuser/Pictures/SX CCD/SC-CCD-Test-'+name+'.fits', 'wb')
-            f.write(image_data)
-            f.close()
+    name = str(expTime)
+    
+    # wait for the exposure
+    blobEvent.wait()
+    
+    for blob in ccd_ccd1:
+        print("name: ", blob.name," size: ", blob.size," format: ", blob.format)
+        # pyindi-client adds a getblobdata() method to IBLOB item
+        # for accessing the contents of the blob, which is a bytearray in Python
+        image_data=blob.getblobdata()
+        print("fits data type: ", type(image_data))
 
-        i+=1
+        # write the byte array out to a FITS file
+        f = open('/home/vncuser/Pictures/SX CCD/SC-CCD-Test-'+name+'.fits', 'wb')
+        f.write(image_data)
+        f.close()
+
 
 if __name__ == "__main__":
     
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1 = connect_to_ccd(indiclient)
-
-    blobEvent=threading.Event()
-    blobEvent.clear()    
     
     flag = True
     while flag:
@@ -133,8 +128,9 @@ if __name__ == "__main__":
         try:
             float(expTime)
             if float(expTime) >= 0:
-                exposures = [float(expTime)]
-                exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures)
+                expTime = float(expTime)
+                blobEvent=threading.Event()
+                exposure(indiclient, ccd_exposure, ccd_ccd1, expTime)
             
         except ValueError:
             print('ERROR: Not a valid exposure time')        
