@@ -47,7 +47,6 @@ def connect_to_indi():
     return indiclient
 
 def connect_to_ccd(indiclient):
-    # Let's take some pictures
     ccd="SX CCD SXVR-H694"
     device_ccd=indiclient.getDevice(ccd)
     while not(device_ccd):
@@ -71,25 +70,15 @@ def connect_to_ccd(indiclient):
     while not(ccd_exposure):
         time.sleep(0.5)
         ccd_exposure=device_ccd.getNumber("CCD_EXPOSURE")
- 
-    # Ensure the CCD simulator snoops the telescope simulator
-    # otherwise you may not have a picture of vega
-    # ccd_active_devices=device_ccd.getText("ACTIVE_DEVICES")
-    # while not(ccd_active_devices):
-    #     time.sleep(0.5)
-    #     ccd_active_devices=device_ccd.getText("ACTIVE_DEVICES")
-    # ccd_active_devices[0].text="Telescope Simulator"
-    # indiclient.sendNewText(ccd_active_devices)
- 
-    # we should inform the indi server that we want to receive the
+  
+    # inform the indi server that we want to receive the
     # "CCD1" blob from this device
     indiclient.setBLOBMode(PyIndi.B_ALSO, ccd, "CCD1")
-    print("setting blob mode")
     ccd_ccd1=device_ccd.getBLOB("CCD1")
     while not(ccd_ccd1):
         time.sleep(0.5)
         ccd_ccd1=device_ccd.getBLOB("CCD1")
-    print("got blob")
+        
     return ccd_exposure, ccd_ccd1
 
 def exposure(indiclient, ccd_exposure, ccd_ccd1, expTime):
