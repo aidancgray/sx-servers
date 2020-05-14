@@ -115,6 +115,9 @@ def exposure(expTime):
 
 class MyTCPHandler(socketserver.StreamRequestHandler,):
 
+    #def setup():
+    #    print('Setup handle')
+        
     def handle(self):
         # self.rfile is a file-like object created by the handler;
         # we can now use e.g. readline() instead of raw recv() calls
@@ -126,28 +129,32 @@ class MyTCPHandler(socketserver.StreamRequestHandler,):
         # to the client
         self.wfile.write(self.data.upper())
         
-        
+        expTime = self.data
+
         try:
             float(self.data)
             if float(expTime) >= 0:
                 expTime = float(expTime)
-                blobEvent=threading.Event()
                 exposure(expTime)
             
         except ValueError:
-            print('ERROR: Not a valid exposure time')        
+            print('ERROR: Not a valid exposure time')
 
+    def finish(self):
+        print('Finish handle')
 
 if __name__ == "__main__":
 
     # connect to the local indiserver
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1 = connect_to_ccd()
-    
+
+    # create a thread event for blobs
+    blobEvent=threading.Event()
 
     # setup Remote TCP Server
-    HOST, PORT = "192.168.1.85", 9999
-
+    HOST, PORT = "192.168.1.85", 9998
+    socketserver.TCPServer.allow_reuse_address = True
     print("Opening connection @"+HOST+":"+str(PORT))
     
     # Create the server
@@ -155,4 +162,10 @@ if __name__ == "__main__":
     
     # Activate the server; this will keep running until you
     # interrupt the program with Ctrl-C
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print('...Closing server...')
+        server.shutdown()
+    except:
+        print('Unknown Error')
