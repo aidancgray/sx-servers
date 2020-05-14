@@ -1,11 +1,4 @@
-
 import socketserver
-
-def test():
-    return('test')
-
-def print_it(data):
-    print(t)
 
 class MyTCPHandler(socketserver.StreamRequestHandler,):
 
@@ -16,18 +9,16 @@ class MyTCPHandler(socketserver.StreamRequestHandler,):
         print("{} wrote:".format(self.client_address[0]))
         print(self.data)
         
-        #print_it(self.data)
-        
         # Likewise, self.wfile is a file-like object used to write back
         # to the client
         self.wfile.write(self.data.upper())
             
-if __name__ == "__main__":
-    t = test()
+if __name__ == "__main__":    
+    HOST, PORT = "192.168.1.85", 9999
+
+    print("Opening connection @"+HOST+":"+str(PORT))
     
-    HOST, PORT = "localhost", 9999
-    
-    # Create the server, binding to localhost on port 9999
+    # Create the server
     server = socketserver.TCPServer((HOST, PORT), MyTCPHandler)
     
     # Activate the server; this will keep running until you
