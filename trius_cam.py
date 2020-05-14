@@ -112,28 +112,29 @@ def exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures):
             # for accessing the contents of the blob, which is a bytearray in Python
             image_data=blob.getblobdata()
             print("fits data type: ", type(image_data))
+            f = open('/home/vncuser/Pictures/SX CCD/SC-CCD-Test-'+name+'.fits', 'wb')
+            f.write(image_data)
+            f.close()
 
-            image2D = blob.processblob()
-            
-            #image2D.shape = (2200, 2750)
-            hdu = fits.PrimaryHDU()
-            hdu.data = image2D
-            hdu.writeto('/home/vncuser/Pictures/SX CCD/SX-CCD-Test-'+name+'.fits')
-        # and perform some computations while the ccd is exposing
-        # but this is outside the scope of this tutorial
         i+=1
 
 if __name__ == "__main__":
     
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1 = connect_to_ccd(indiclient)
-    
-    # a list of our exposure times
-    exposures=[0.1, 0.5, 1.0, 1.5]
-    
-    # we use here the threading.Event facility of Python
-    # we define an event for newBlob event
+
     blobEvent=threading.Event()
     blobEvent.clear()    
-
-    exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures)
+    
+    flag = True
+    while flag:
+        expTime = input('$ ')
+        
+        try:
+            float(expTime)
+            if float(expTime) >= 0:
+                exposures = [float(expTime)]
+                exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures)
+            
+        except ValueError:
+            print('ERROR: Not a valid exposure time')        
