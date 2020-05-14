@@ -46,7 +46,7 @@ def connect_to_indi():
 
     return indiclient
 
-def connect_to_ccd(indiclient)
+def connect_to_ccd(indiclient):
     # Let's take some pictures
     ccd="SX CCD SXVR-H694"
     device_ccd=indiclient.getDevice(ccd)
@@ -92,12 +92,7 @@ def connect_to_ccd(indiclient)
 
     return ccd_exposure, ccd_ccd1
 
-def exposure(indiclient, ccd_exposure, ccd_ccd1, exposures):
- 
-    # we use here the threading.Event facility of Python
-    # we define an event for newBlob event
-    blobEvent=threading.Event()
-    blobEvent.clear()
+def exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures):
     i=0
     ccd_exposure[0].value=exposures[i]
     indiclient.sendNewNumber(ccd_exposure)
@@ -129,10 +124,16 @@ def exposure(indiclient, ccd_exposure, ccd_ccd1, exposures):
         i+=1
 
 if __name__ == "__main__":
+    
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1 = connect_to_ccd(indiclient)
     
     # a list of our exposure times
     exposures=[0.1, 0.5, 1.0, 1.5]
+    
+    # we use here the threading.Event facility of Python
+    # we define an event for newBlob event
+    blobEvent=threading.Event()
+    blobEvent.clear()    
 
-    exposure(indiclient, ccd_exposure, ccd_ccd1, exposures)
+    exposure(indiclient, blobEvent, ccd_exposure, ccd_ccd1, exposures)
