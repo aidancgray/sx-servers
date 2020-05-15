@@ -173,8 +173,7 @@ async def handle_client(reader, writer):
     request = None
     while request != 'quit':
         request = (await reader.read(255)).decode('utf8')
-        response = str(eval(request)) + '\n'
-        writer.write(response.encode('utf8'))
+        writer.write(request.encode('utf8'))
         await writer.drain()
     writer.close()
 
@@ -187,7 +186,7 @@ if __name__ == "__main__":
 
     # create a thread event for blobs
     blobEvent=threading.Event()
-
+    
     # setup Remote TCP Server
     HOST, PORT = "192.168.1.85", 9998
     #socketserver.TCPServer.allow_reuse_address = True
