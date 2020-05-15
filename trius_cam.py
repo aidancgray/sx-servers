@@ -90,7 +90,7 @@ def connect_to_ccd():
         
     return ccd_exposure, ccd_ccd1
 
-def exposure(expTime):
+def exposure(expType, expTime):
     blobEvent.clear()    
     
     # set the value for the next exposure
@@ -102,17 +102,45 @@ def exposure(expTime):
     blobEvent.wait()
     
     for blob in ccd_ccd1:
-        print("name: ", blob.name," size: ", blob.size," format: ", blob.format)
+        #print("name: ", blob.name," size: ", blob.size," format: ", blob.format)
         # pyindi-client adds a getblobdata() method to IBLOB item
         # for accessing the contents of the blob, which is a bytearray in Python
         image_data=blob.getblobdata()
-        print("fits data type: ", type(image_data))
+        #print("fits data type: ", type(image_data))
 
         # write the byte array out to a FITS file
-        f = open('/home/vncuser/Pictures/SX CCD/SXVR-H694-'+name+'.fits', 'wb')
+        fileName = pictureLocation+'fsc-'+name+'.fits'
+        f = open(fileName, 'wb')
         f.write(image_data)
         f.close()
+        
+        # edit the FITS header
+        fitsFile = fits.open(fileName, 'update')
+        hdr = fitsFile[0].header
+        hdr.set('expType', expType)
+        fitsFile.close()
+    return fileName
+    
+def handle_command(data):
+    response = 'BAD: Invalid Command'
+    commandList = data.split()
 
+    if commandList[0] == 'Expose':
+        if len(commandList) == 3:
+            if commandList[1] == 'object' or commandList[1] == 'flat' or commandList[1] == 'dark' or commandList[1] == 'bias':
+                expType = commandList[1]
+                expTime = commandList[2]
+                try:
+                    float(expTime)
+                    if float(expTime) >= 0:
+                        expTime = float(expTime)
+                        fileName = exposure(expType, expTime)
+                        response = 'OK'+'FILENAME: '+fileName
+                except ValueError:
+                    response = 'BAD: Invalid Exposure Time'
+
+    return response
+            
 class MyTCPHandler(socketserver.StreamRequestHandler,):
 
     #def setup():
@@ -124,27 +152,25 @@ class MyTCPHandler(socketserver.StreamRequestHandler,):
         self.data = self.rfile.readline().strip()
         print("{} wrote:".format(self.client_address[0]))
         print(self.data)
-        
+
         # Likewise, self.wfile is a file-like object used to write back
         # to the client
-        self.wfile.write(self.data.upper())
+#        self.wfile.write(self.data.upper())
         
-        expTime = self.data
+        dataDec = self.data.decode('utf-8')
+        if dataDec == 'q':
+            response = 'Client Disconnected'
+            print(response)
+        else:
+            response = handle_command(dataDec)
 
-        try:
-            float(self.data)
-            if float(expTime) >= 0:
-                expTime = float(expTime)
-                exposure(expTime)
-            
-        except ValueError:
-            print('ERROR: Not a valid exposure time')
-
-    def finish(self):
-        print('Finish handle')
+        # Likewise, self.wfile is a file-like object used to write back
+        # to the client
+        self.wfile.write(str.encode('COM: '+dataDec+'\nRESP: '+response))
 
 if __name__ == "__main__":
-
+    pictureLocation = '/home/vncuser/Pictures/SX-CCD/'
+    
     # connect to the local indiserver
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1 = connect_to_ccd()
