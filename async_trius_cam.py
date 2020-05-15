@@ -174,6 +174,14 @@ async def handle_client(reader, writer):
     while request != 'quit':
         request = (await reader.read(255)).decode('utf8')
         writer.write(request.encode('utf8'))
+        
+        dataDec = request
+        if dataDec == 'q':
+            response = 'Client Disconnected'
+            print(response)
+        else:
+            response = handle_command(dataDec)
+
         await writer.drain()
     writer.close()
 
