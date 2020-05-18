@@ -6,16 +6,14 @@
 # 
 # This is an Indi Client for testing the Trius Cam on Indi Server.
 
-import socketserver
-import queue
 import asyncio
 import PyIndi
 import time
 import sys
+import os
 import threading
 import numpy as np
 from astropy.io import fits
-from concurrent.futures import ProcessPoolExecutor
 
 class IndiClient(PyIndi.BaseClient):
     def __init__(self):
@@ -28,7 +26,7 @@ class IndiClient(PyIndi.BaseClient):
         pass
     def newBLOB(self, bp):
         global blobEvent
-        print("new BLOB ", bp.name)
+        #print("new BLOB ", bp.name)
         blobEvent.set()
         pass
     def newSwitch(self, svp):
@@ -76,7 +74,6 @@ def connect_to_ccd():
         ccd_connect[0].s=PyIndi.ISS_ON  # the "CONNECT" switch
         ccd_connect[1].s=PyIndi.ISS_OFF # the "DISCONNECT" switch
         indiclient.sendNewSwitch(ccd_connect)
-
  
     ccd_exposure=device_ccd.getNumber("CCD_EXPOSURE")
     while not(ccd_exposure):
@@ -90,8 +87,48 @@ def connect_to_ccd():
     while not(ccd_ccd1):
         time.sleep(0.5)
         ccd_ccd1=device_ccd.getBLOB("CCD1")
-        
-    return ccd_exposure, ccd_ccd1
+
+    # get access to setting the CCD's binning value
+    ccd_bin=device_ccd.getNumber("CCD_BINNING")
+    while not(ccd_bin):
+        time.sleep(0.5)
+        ccd_bin=device_ccd.getNumber("CCD_BINNING")
+
+    # get access to aborting the CCD's exposure
+    ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
+    #while not(ccd_abort):
+    #    time.sleep(0.5)
+    #    ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
+
+    # get access to the CCD's temperature value
+    ccd_temp=device_ccd.getNumber("CCD_TEMPERATURE")
+    while not(ccd_temp):
+        time.sleep(0.5)
+        ccd_temp=device_ccd.getNumber("CCD_TEMPERATURE")
+
+    # get access to switching the CCD's cooler on/off
+    ccd_cooler=device_ccd.getSwitch("CCD_COOLER")
+    while not(ccd_cooler):
+        time.sleep(0.5)
+        ccd_cooler=device_ccd.getSwitch("CCD_COOLER")
+    
+    return ccd_exposure, ccd_ccd1, ccd_bin, ccd_abort, ccd_temp, ccd_cooler
+
+def last_image(fileDir):
+    lastNum = 0
+
+    for f in os.listdir(fileDir):
+        if os.path.isfile(os.path.join(fileDir, f)):
+            file_name = os.path.splitext(f)[0]
+            file_name = file_name[4:]
+            try:
+                file_num = int(file_name)
+                if file_num > lastNum:
+                    lastNum = file_num
+            except ValueError:
+                'The file name "%s" is not an integer. Skipping' % file_name
+
+    return lastNum
 
 def exposure(expType, expTime):
     blobEvent.clear()    
@@ -115,7 +152,10 @@ def exposure(expType, expTime):
         #print("fits data type: ", type(image_data))
 
         # write the byte array out to a FITS file
-        fileName = pictureLocation+'fsc-'+name+'.fits'
+
+        global imgNum
+        imgNum += 1
+        fileName = fileDir+'fsc-'+str(imgNum).zfill(8)+'.fits'
         f = open(fileName, 'wb')
         f.write(image_data)
         f.close()
@@ -125,14 +165,40 @@ def exposure(expType, expTime):
         hdr = fitsFile[0].header
         hdr.set('expType', expType)
         fitsFile.close()
+        
     return fileName
+
+# change the CCD's parameters based on what the client provides
+def setParams(commandList):
+
+    for i in commandList:
+        if 'bin=' in i:
+            bin = i.replace('bin=','')
+            response = 'OK: Bin set to '+bin
+        elif 'temp=' in i:
+            temp = i.replace('temp=','')
+            response = 'OK: Temp set to '+temp
+        elif 'fileDir=' in i:
+            try:
+                global imgNum
+                global fileDir
+                tempFileDir = i.replace('fileDir=','')
+                imgNum = last_image(tempFileDir)
+                fileDir = tempFileDir
+                response = 'OK: File directory set to '+fileDir
+            except FileNotFoundError:
+                response = 'BAD: Directory does not exist'
+        else:
+            response = 'BAD: Invalid Set'+'\n'+response
+
+    return response
 
 # command handler, to parse the client's data more precisely
 def handle_command(writer, data): 
     response = 'BAD: Invalid Command'
     commandList = data.split()
 
-    # check if command is Expose or Set
+    # check if command is Expose, Set, or Get
     if commandList[0] == 'expose':
         if len(commandList) == 3:
             if commandList[1] == 'object' or commandList[1] == 'flat' or commandList[1] == 'dark' or commandList[1] == 'bias':
@@ -146,7 +212,11 @@ def handle_command(writer, data):
                         response = 'OK\n'+'FILENAME: '+fileName
                 except ValueError:
                     response = 'BAD: Invalid Exposure Time'
-
+    elif commandList[0] == 'set':
+        if len(commandList) >= 1:
+            response = setParams(commandList[1:])
+        
+        
     # tell the client what file was created
     writer.write((response+'\n').encode('utf-8'))    
 
@@ -168,11 +238,13 @@ async def handle_client(reader, writer):
             # check if the command thread is running
             try:
                 if comThread.is_alive():
-                    response = 'busy'
+                    response = 'BUSY'
                 else:
-                    response = 'idle'
+                    response = 'IDLE'
             except:
-                response = 'idle'
+                response = 'IDLE'
+
+            response = response+'\nBIN X: '+str(ccd_bin[0].value)+'\n'+'BIN Y: '+str(ccd_bin[1].value)+'\n'+'CCD TEMP: '+str(ccd_temp[0].value)+'C\n'+'FILE DIR: '+str(fileDir)
             # send current status to open connection
             writer.write((response+'\n').encode('utf-8'))
         
@@ -199,13 +271,12 @@ async def main(HOST, PORT):
     await server.serve_forever()
     
 if __name__ == "__main__":
-    pictureLocation = '/home/vncuser/Pictures/SX-CCD/'
-
-    executor = ProcessPoolExecutor(max_workers=5)
+    fileDir = '/home/vncuser/Pictures/SX-CCD/'
+    imgNum = last_image(fileDir)
     
     # connect to the local indiserver
     indiclient = connect_to_indi()
-    ccd_exposure, ccd_ccd1 = connect_to_ccd()
+    ccd_exposure, ccd_ccd1, ccd_bin, ccd_abort, ccd_temp, ccd_cooler = connect_to_ccd()
 
     # create a thread event for blobs
     blobEvent=threading.Event()
