@@ -12,6 +12,7 @@ import time
 import sys
 import os
 import threading
+import logging
 import numpy as np
 from astropy.io import fits
 
@@ -44,6 +45,18 @@ class IndiClient(PyIndi.BaseClient):
     def serverDisconnected(self, code):
         pass
 
+# create log
+def log_start():
+    scriptDir = os.path.dirname(os.path.abspath(__file__))
+    scriptName = os.path.splitext(os.path.basename(__file__))[0]
+    log = logging.getLogger('cam_server')
+    hdlr = logging.FileHandler(scriptDir+'/'+scriptName+'.log')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    hdlr.setFormatter(formatter)
+    log.addHandler(hdlr)
+    log.setLevel(logging.INFO)
+    return log
+    
 def connect_to_indi():
     # connect the server
     indiclient=IndiClient()
@@ -116,19 +129,21 @@ def connect_to_ccd():
 
 def last_image(fileDir):
     lastNum = 0
-
+    lastImg = ''
+    
     for f in os.listdir(fileDir):
         if os.path.isfile(os.path.join(fileDir, f)):
             file_name = os.path.splitext(f)[0]
-            file_name = file_name[4:]
+            file_name2 = file_name[4:]
             try:
-                file_num = int(file_name)
+                file_num = int(file_name2)
                 if file_num > lastNum:
                     lastNum = file_num
+                    lastImg = os.path.join(fileDir, f)
             except ValueError:
                 'The file name "%s" is not an integer. Skipping' % file_name
 
-    return lastNum
+    return lastNum, lastImg
 
 def exposure(expType, expTime):
     blobEvent.clear()    
@@ -154,11 +169,13 @@ def exposure(expType, expTime):
         # write the byte array out to a FITS file
 
         global imgNum
+        global imgName
         imgNum += 1
         fileName = fileDir+'fsc-'+str(imgNum).zfill(8)+'.fits'
         f = open(fileName, 'wb')
         f.write(image_data)
         f.close()
+        imgName = fileName
         
         # edit the FITS header
         fitsFile = fits.open(fileName, 'update')
@@ -172,18 +189,58 @@ def exposure(expType, expTime):
 def setParams(commandList):
 
     for i in commandList:
+        # set the bin mode (1x1 or 2x2)
         if 'bin=' in i:
-            bin = i.replace('bin=','')
-            response = 'OK: Bin set to '+bin
+            try:
+                bin = int(i.replace('bin=',''))
+                if bin >= 1 and bin <= 2:
+                    ccd_bin[0].value = bin
+                    ccd_bin[1].value = bin
+                    indiclient.sendNewNumber(ccd_bin)
+                    response = 'OK: Bin mode set to '+str(bin)+'x'+str(bin)
+                else:
+                    response = 'BAD: Invalid Bin Mode'
+            except ValueError:
+                response = 'BAD: Invalid Bin Mode'
+
+        # turn the cooler on/off
+        elif 'cooler=' in i:
+            cooler = i.replace('cooler=','')
+
+            if cooler.lower() == 'on':
+                ccd_cooler[0].s=PyIndi.ISS_ON  # the "COOLER_ON" switch
+                ccd_cooler[1].s=PyIndi.ISS_OFF # the "COOLER_OFF" switch
+                indiclient.sendNewSwitch(ccd_cooler)
+                response = 'OK: Cooler turned '+cooler
+            elif cooler.lower() == 'off':
+                ccd_cooler[0].s=PyIndi.ISS_OFF  # the "COOLER_ON" switch
+                ccd_cooler[1].s=PyIndi.ISS_ON   # the "COOLER_OFF" switch
+                indiclient.sendNewSwitch(ccd_cooler)
+                response = 'OK: Cooler turned '+cooler
+            else:
+                response = 'BAD: Invalid cooler set'
+                
+        # set the temperature setpoint (-40C - 0C)
         elif 'temp=' in i:
-            temp = i.replace('temp=','')
-            response = 'OK: Temp set to '+temp
+            try:
+                temp = float(i.replace('temp=',''))
+                if temp >= -40 and temp <= 0:
+                    response = 'OK: Setting temperature setpoint to '+str(temp)
+                    ccd_temp[0].value = temp
+                    indiclient.sendNewNumber(ccd_temp)
+                else:
+                    response = 'BAD: Invalid temperature setpoint'
+            except ValueError:
+                response = 'BAD: Invalid temperature setpoint'
+                
+        # set the image output directory
         elif 'fileDir=' in i:
             try:
                 global imgNum
+                global imgName
                 global fileDir
                 tempFileDir = i.replace('fileDir=','')
-                imgNum = last_image(tempFileDir)
+                imgNum, imgName = last_image(tempFileDir)
                 fileDir = tempFileDir
                 response = 'OK: File directory set to '+fileDir
             except FileNotFoundError:
@@ -194,42 +251,49 @@ def setParams(commandList):
     return response
 
 # command handler, to parse the client's data more precisely
-def handle_command(writer, data): 
+def handle_command(log, writer, data): 
     response = 'BAD: Invalid Command'
     commandList = data.split()
 
-    # check if command is Expose, Set, or Get
-    if commandList[0] == 'expose':
-        if len(commandList) == 3:
-            if commandList[1] == 'object' or commandList[1] == 'flat' or commandList[1] == 'dark' or commandList[1] == 'bias':
-                expType = commandList[1]
-                expTime = commandList[2]
-                try:
-                    float(expTime)
-                    if float(expTime) >= 0:                    
-                        expTime = float(expTime)
-                        fileName = exposure(expType, expTime)
-                        response = 'OK\n'+'FILENAME: '+fileName
-                except ValueError:
-                    response = 'BAD: Invalid Exposure Time'
-    elif commandList[0] == 'set':
-        if len(commandList) >= 1:
-            response = setParams(commandList[1:])
+    try:
+        # check if command is Expose, Set, or Get
+        if commandList[0] == 'expose':
+            if len(commandList) == 3:
+                if commandList[1] == 'object' or commandList[1] == 'flat' or commandList[1] == 'dark' or commandList[1] == 'bias':
+                    expType = commandList[1]
+                    expTime = commandList[2]
+                    try:
+                        float(expTime)
+                        if float(expTime) > 0:                    
+                            expTime = float(expTime)
+                            fileName = exposure(expType, expTime)
+                            response = 'OK\n'+'FILENAME: '+fileName
+                        else:
+                            response = 'BAD: Invalid Exposure Time'
+                    except ValueError:
+                        response = 'BAD: Invalid Exposure Time'
+        elif commandList[0] == 'set':
+            if len(commandList) >= 1:
+                response = setParams(commandList[1:])
+    except IndexError:
+        response = 'BAD: Invalid Command'
         
-        
-    # tell the client what file was created
+    # tell the client the result of their command & log it
+    log.info('RESPONSE: '+response)
     writer.write((response+'\n').encode('utf-8'))    
 
 # async client handler, for multiple connections
 async def handle_client(reader, writer):
     request = None
-
+    
     # loop to continually handle incoming data
     while request != 'quit':
         request = (await reader.read(255)).decode('utf8')
-        print(request)
+        print(request.encode('utf8'))
+        log.info('COMMAND: '+request)
         writer.write(('COMMAND: '+request.upper()).encode('utf8'))    
 
+        response = 'BAD'
         # check if data is empty, a status query, or potential command
         dataDec = request
         if dataDec == '':
@@ -244,24 +308,28 @@ async def handle_client(reader, writer):
             except:
                 response = 'IDLE'
 
-            response = response+'\nBIN X: '+str(ccd_bin[0].value)+'\n'+'BIN Y: '+str(ccd_bin[1].value)+'\n'+'CCD TEMP: '+str(ccd_temp[0].value)+'C\n'+'FILE DIR: '+str(fileDir)
-            # send current status to open connection
+            response = response+'\nBIN MODE: '+str(ccd_bin[0].value)+'x'+str(ccd_bin[1].value)+'\nCCD TEMP: '+str(ccd_temp[0].value)+'C\nFILE DIR: '+str(fileDir)+'\nLAST IMAGE: '+str(imgName)
+            
+            # send current status to open connection & log it
+            log.info('RESPONSE: '+response)
             writer.write((response+'\n').encode('utf-8'))
-        
         else:
             # check if the command thread is running, may fail if not created yet, hence try/except
             try:
                 if comThread.is_alive():
                     response = 'BAD: busy'
+                    # send current status to open connection & log it
+                    log.info('RESPONSE: '+response)
+                    writer.write((response+'\n').encode('utf-8'))
                 else:
                     # create a new thread for the command
-                    comThread = threading.Thread(target=handle_command, args=(writer, dataDec,))
+                    comThread = threading.Thread(target=handle_command, args=(log, writer, dataDec,))
                     comThread.start()
             except:
                 # create a new thread for the command
-                comThread = threading.Thread(target=handle_command, args=(writer, dataDec,))
+                comThread = threading.Thread(target=handle_command, args=(log, writer, dataDec,))
                 comThread.start()
-        
+        writer.write(('--------------------------------------\n').encode('utf8'))                          
         await writer.drain()
     writer.close()
 
@@ -272,12 +340,21 @@ async def main(HOST, PORT):
     
 if __name__ == "__main__":
     fileDir = '/home/vncuser/Pictures/SX-CCD/'
-    imgNum = last_image(fileDir)
+    imgNum, imgName = last_image(fileDir)
+    log = log_start()
     
     # connect to the local indiserver
     indiclient = connect_to_indi()
     ccd_exposure, ccd_ccd1, ccd_bin, ccd_abort, ccd_temp, ccd_cooler = connect_to_ccd()
 
+    # initialize ccd cooler on and temperature setpoint = -10C
+    ccd_cooler[0].s=PyIndi.ISS_ON  # the "COOLER_ON" switch
+    ccd_cooler[1].s=PyIndi.ISS_OFF # the "COOLER_OFF" switch
+    indiclient.sendNewSwitch(ccd_cooler)
+
+    ccd_temp[0].value = -10
+    indiclient.sendNewNumber(ccd_temp)
+    
     # create a thread event for blobs
     blobEvent=threading.Event()
     
