@@ -8,6 +8,8 @@
 # for newly created FITS files
 
 import time
+import logging
+import sys
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 from trius_cam_server import *
@@ -25,15 +27,12 @@ def log_start():
     return log
 
 def on_created(event):
-    print(f"Created: {event.src_path}")
-    log.INFO('Created: {event.src_path}')
+    log.info(f"Created: {event.src_path}")
 
 if __name__ == "__main__":
-    path = "/home/vncuser/Pictures/SX-CCD/"
-    print('fileDir: '+path)
-
+    path = sys.argv[1]
     log = log_start()
-    
+ 
     patterns = "*.fits"
     ignore_patterns = ""
     ignore_directories = True
