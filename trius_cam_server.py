@@ -13,6 +13,7 @@ import sys
 import os
 import threading
 import logging
+import subprocess
 import numpy as np
 from astropy.io import fits
 
@@ -167,7 +168,6 @@ def exposure(expType, expTime):
         #print("fits data type: ", type(image_data))
 
         # write the byte array out to a FITS file
-
         global imgNum
         global imgName
         imgNum += 1
@@ -239,10 +239,13 @@ def setParams(commandList):
                 global imgNum
                 global imgName
                 global fileDir
+                global p
                 tempFileDir = i.replace('fileDir=','')
                 imgNum, imgName = last_image(tempFileDir)
                 fileDir = tempFileDir
                 response = 'OK: File directory set to '+fileDir
+                p.kill()
+                p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             except FileNotFoundError:
                 response = 'BAD: Directory does not exist'
         else:
@@ -280,14 +283,15 @@ def handle_command(log, writer, data):
         
     # tell the client the result of their command & log it
     log.info('RESPONSE: '+response)
-    writer.write((response+'\n').encode('utf-8'))    
+    writer.write((response+'\n').encode('utf-8'))
+    writer.write(('---------------------------------------------------\n').encode('utf-8'))                          
 
 # async client handler, for multiple connections
 async def handle_client(reader, writer):
     request = None
     
     # loop to continually handle incoming data
-    while request != 'quit':
+    while request != 'quit':        
         request = (await reader.read(255)).decode('utf8')
         print(request.encode('utf8'))
         log.info('COMMAND: '+request)
@@ -308,8 +312,12 @@ async def handle_client(reader, writer):
             except:
                 response = 'IDLE'
 
-            response = response+'\nBIN MODE: '+str(ccd_bin[0].value)+'x'+str(ccd_bin[1].value)+'\nCCD TEMP: '+str(ccd_temp[0].value)+'C\nFILE DIR: '+str(fileDir)+'\nLAST IMAGE: '+str(imgName)
-            
+            response = response+\
+                '\nBIN MODE: '+str(ccd_bin[0].value)+'x'+str(ccd_bin[1].value)+\
+                '\nCCD TEMP: '+str(ccd_temp[0].value)+\
+                'C\nFILE DIR: '+str(fileDir)+\
+                '\nLAST IMAGE: '+str(imgName)
+
             # send current status to open connection & log it
             log.info('RESPONSE: '+response)
             writer.write((response+'\n').encode('utf-8'))
@@ -329,7 +337,8 @@ async def handle_client(reader, writer):
                 # create a new thread for the command
                 comThread = threading.Thread(target=handle_command, args=(log, writer, dataDec,))
                 comThread.start()
-        writer.write(('--------------------------------------\n').encode('utf8'))                          
+
+        writer.write(('---------------------------------------------------\n').encode('utf-8'))                          
         await writer.drain()
     writer.close()
 
@@ -339,9 +348,11 @@ async def main(HOST, PORT):
     await server.serve_forever()
     
 if __name__ == "__main__":
-    fileDir = '/home/vncuser/Pictures/SX-CCD/'
+    fileDir = '/home/vncuser/Pictures/SX-CCD/'    
     imgNum, imgName = last_image(fileDir)
     log = log_start()
+
+    p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     
     # connect to the local indiserver
     indiclient = connect_to_indi()
