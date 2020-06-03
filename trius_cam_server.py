@@ -1,5 +1,5 @@
 #!/usr/bin/python3.8
-# trius_cam.py
+# trius_cam_server.py
 # 4/27/2020
 # Aidan Gray
 # aidan.gray@idg.jhu.edu
@@ -244,8 +244,8 @@ def setParams(commandList):
                 imgNum, imgName = last_image(tempFileDir)
                 fileDir = tempFileDir
                 response = 'OK: File directory set to '+fileDir
-                p.kill()
-                p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                #p.kill()
+                #p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             except FileNotFoundError:
                 response = 'BAD: Directory does not exist'
         else:
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     imgNum, imgName = last_image(fileDir)
     log = log_start()
 
-    p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    #p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     
     # connect to the local indiserver
     indiclient = connect_to_indi()
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     blobEvent=threading.Event()
     
     # setup Remote TCP Server
-    HOST, PORT = "192.168.1.85", 9998
+    HOST, PORT = "192.168.1.14", 9998
 
     try:
         asyncio.run(main(HOST,PORT))

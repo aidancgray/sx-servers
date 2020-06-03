@@ -10,6 +10,7 @@
 import time
 import logging
 import sys
+import pyds9
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 from trius_cam_server import *
@@ -27,12 +28,15 @@ def log_start():
     return log
 
 def on_created(event):
+    global d
     log.info(f"Created: {event.src_path}")
+    d.set("file "+event.src_path)
 
 if __name__ == "__main__":
     path = sys.argv[1]
     log = log_start()
- 
+    d = pyds9.DS9()
+
     patterns = "*.fits"
     ignore_patterns = ""
     ignore_directories = True
