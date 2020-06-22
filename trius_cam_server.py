@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#! /usr/bin/env python3
 # trius_cam_server.py
 # 4/27/2020
 # Aidan Gray
@@ -110,9 +110,9 @@ def connect_to_ccd():
 
     # get access to aborting the CCD's exposure
     ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
-    #while not(ccd_abort):
-    #    time.sleep(0.5)
-    #    ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
+    while not(ccd_abort):
+        time.sleep(0.5)
+        ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
 
     # get access to the CCD's temperature value
     ccd_temp=device_ccd.getNumber("CCD_TEMPERATURE")
@@ -321,6 +321,24 @@ async def handle_client(reader, writer):
             # send current status to open connection & log it
             log.info('RESPONSE: '+response)
             writer.write((response+'\n').encode('utf-8'))
+            
+        elif 'stop' in dataDec.lower():
+            # check if the command thread is running
+            try:
+                if comThread.is_alive():
+                    response = 'OK: aborting exposure'
+                    ccd_abort[0].s=PyIndi.ISS_ON 
+                    indiclient.sendNewSwitch(ccd_abort)
+                    blobEvent.set() #Ends the currently running thread.
+                    response = response+'\nExposure Aborted'
+                else:
+                    response = 'BAD: idle'
+            except:
+                response = 'BAD: idle'
+
+            # send current status to open connection & log it
+            log.info('RESPONSE: '+response)
+	    
         else:
             # check if the command thread is running, may fail if not created yet, hence try/except
             try:
