@@ -109,10 +109,10 @@ def connect_to_ccd():
         ccd_bin=device_ccd.getNumber("CCD_BINNING")
 
     # get access to aborting the CCD's exposure
-    ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
+    ccd_abort=device_ccd.getSwitch("CCD_ABORT_EXPOSURE")
     while not(ccd_abort):
         time.sleep(0.5)
-        ccd_abort=device_ccd.getNumber("CCD_ABORT_EXPOSURE")
+        ccd_abort=device_ccd.getSwitch("CCD_ABORT_EXPOSURE")
 
     # get access to the CCD's temperature value
     ccd_temp=device_ccd.getNumber("CCD_TEMPERATURE")
@@ -366,11 +366,11 @@ async def main(HOST, PORT):
     await server.serve_forever()
     
 if __name__ == "__main__":
-    fileDir = '/home/vncuser/Pictures/SX-CCD/'    
+    fileDir = os.path.expanduser('~')+'/Pictures/'    
     imgNum, imgName = last_image(fileDir)
     log = log_start()
 
-    #p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen([sys.executable, 'file_watcher.py', fileDir], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     
     # connect to the local indiserver
     indiclient = connect_to_indi()
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     blobEvent=threading.Event()
     
     # setup Remote TCP Server
-    HOST, PORT = "192.168.1.14", 9998
+    HOST, PORT = "192.168.1.29", 9998
 
     try:
         asyncio.run(main(HOST,PORT))

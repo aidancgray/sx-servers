@@ -146,7 +146,7 @@ def handle_command(log, writer, data):
     commandList = data.split()
 
     try:
-        # check if command is Expose, Set, or Get
+        # check if command is Set or not
         if commandList[0] == 'set':
             if len(commandList) >= 1:
                 response = setParams(commandList[1:])
@@ -218,7 +218,7 @@ async def main(HOST, PORT):
     await server.serve_forever()
     
 if __name__ == "__main__":
-    fileDir = '/home/vncuser/Pictures/SX-CCD/'    
+    fileDir = os.path.expanduser('~')+'/Pictures/'    
     log = log_start()
     
     # connect to the local indiserver
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     filter_slot, filter_name = connect_to_wheel()
     
     # setup Remote TCP Server
-    HOST, PORT = "192.168.1.14", 9997
+    HOST, PORT = "192.168.1.29", 9997
 
     try:
         asyncio.run(main(HOST,PORT))
