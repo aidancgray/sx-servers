@@ -1,3 +1,3 @@
-# sdss-v-fsc
+# sx-servers
 
-# 5/12/2020 - First commit
+# Various servers & scripts for Starlight Xpress hardware, including CCD's & Filter Wheels
